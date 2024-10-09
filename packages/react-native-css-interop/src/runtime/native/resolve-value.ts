@@ -1,4 +1,3 @@
-import type { AnimatableValue } from "react-native-reanimated";
 import type { EasingFunction, Time } from "lightningcss";
 import type {
   InteropComponentConfig,
@@ -7,7 +6,7 @@ import type {
 } from "../../types";
 
 import { PixelRatio, Platform, PlatformColor, StyleSheet } from "react-native";
-import { Effect, observable } from "../observable";
+import { observable } from "../observable";
 import {
   isDescriptorArray,
   isDescriptorFunction,
@@ -15,9 +14,9 @@ import {
 } from "../../shared";
 import { ReducerState, ReducerTracking, Refs, ShorthandResult } from "./types";
 import { getUniversalVariable, getVariable } from "./styles";
-import { systemColorScheme } from "./appearance-observables";
 import { rem, vh, vw } from "./unit-observables";
 import { textShadow } from "./resolvers/text-shadow";
+import { defaultValues } from "./resolvers/defaults";
 
 /**
  * Get the final value of a value descriptor
@@ -408,51 +407,21 @@ function getVar(
 export function resolveAnimation(
   state: ReducerState,
   refs: Refs,
-  [initialFrame, ...frames]: RuntimeValueFrame[],
+  frames: RuntimeValueFrame[],
   property: string,
-  delay: number,
-  totalDuration: number,
-  easingFuncs: EasingFunction | EasingFunction[],
-): [AnimatableValue, AnimatableValue, ...AnimatableValue[]] {
-  const { withDelay, withTiming, Easing } =
-    require("react-native-reanimated") as typeof import("react-native-reanimated");
+): [number[], any[]] {
+  const input: number[] = [];
+  const output: any[] = [];
 
   let progress = 0;
+  for (let index = 0; index < frames.length; index++) {
+    const frame = frames[index];
+    progress += frame.progress - progress;
+    output.push(resolveAnimationValue(state, refs, property, frame.value));
+    input.push(progress);
+  }
 
-  const initialValue = resolveAnimationValue(
-    state,
-    refs,
-    property,
-    initialFrame.value,
-  );
-
-  return [
-    initialValue,
-    ...frames.map((frame, index) => {
-      const easingFunction = Array.isArray(easingFuncs)
-        ? easingFuncs[index]
-        : easingFuncs;
-
-      const framesProgress = frame.progress - progress;
-
-      let value = withTiming(
-        resolveAnimationValue(state, refs, property, frame.value),
-        {
-          duration: totalDuration * framesProgress,
-          easing: getEasing(easingFunction, Easing),
-        },
-      );
-
-      // You can only have a delay between the initial and first frame
-      if (index === 1) {
-        value = withDelay(delay, value);
-      }
-
-      progress += framesProgress;
-
-      return value;
-    }),
-  ] as [AnimatableValue, AnimatableValue, ...AnimatableValue[]];
+  return [input, output];
 }
 
 function resolveAnimationValue(
@@ -465,11 +434,7 @@ function resolveAnimationValue(
     const { value: baseValue, defaultValue } = getBaseValue(state, [property]);
     value = baseValue ?? defaultValue;
     if (value === undefined) {
-      const defaultValueFn =
-        defaultValues[property as keyof typeof defaultValues];
-      return typeof defaultValueFn === "function"
-        ? defaultValueFn(state.styleTracking.effect)
-        : defaultValueFn;
+      return defaultValues[property as keyof typeof defaultValues];
     }
     return value;
   } else {
@@ -574,67 +539,6 @@ export function getHeight(
 ) {
   return getLayout(state, refs, tracking)[1];
 }
-
-export const defaultValues = {
-  backgroundColor: "transparent",
-  borderBottomColor: "transparent",
-  borderBottomLeftRadius: 0,
-  borderBottomRightRadius: 0,
-  borderBottomWidth: 0,
-  borderColor: "transparent",
-  borderLeftColor: "transparent",
-  borderLeftWidth: 0,
-  borderRadius: 0,
-  borderRightColor: "transparent",
-  borderRightWidth: 0,
-  borderTopColor: "transparent",
-  borderTopWidth: 0,
-  borderWidth: 0,
-  bottom: 0,
-  color: (effect: Effect) => {
-    return systemColorScheme.get(effect) === "dark" ? "white" : "black";
-  },
-  flex: 1,
-  flexBasis: 1,
-  flexGrow: 1,
-  flexShrink: 0,
-  fontSize: 14,
-  fontWeight: "400",
-  gap: 0,
-  left: 0,
-  lineHeight: 14,
-  margin: 0,
-  marginBottom: 0,
-  marginLeft: 0,
-  marginRight: 0,
-  marginTop: 0,
-  maxHeight: 99999,
-  maxWidth: 99999,
-  minHeight: 0,
-  minWidth: 0,
-  opacity: 1,
-  padding: 0,
-  paddingBottom: 0,
-  paddingLeft: 0,
-  paddingRight: 0,
-  paddingTop: 0,
-  perspective: 1,
-  right: 0,
-  rotate: "0deg",
-  rotateX: "0deg",
-  rotateY: "0deg",
-  rotateZ: "0deg",
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  skewX: "0deg",
-  skewY: "0deg",
-  textShadowRadius: 0,
-  top: 0,
-  translateX: 0,
-  translateY: 0,
-  zIndex: 0,
-};
 
 const calcPrecedence: Record<string, number> = {
   "+": 1,
@@ -787,12 +691,8 @@ export function getBaseValue(state: ReducerState, paths: string[]) {
     }
   }
 
-  const defaultValueFn =
-    defaultValues[paths[paths.length - 1] as keyof typeof defaultValues];
   const defaultValue =
-    typeof defaultValueFn === "function"
-      ? defaultValueFn(state.styleTracking.effect)
-      : defaultValueFn;
+    defaultValues[paths[paths.length - 1] as keyof typeof defaultValues];
 
   return {
     value: target as any | undefined,

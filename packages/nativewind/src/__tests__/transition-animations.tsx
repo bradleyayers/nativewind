@@ -2,7 +2,6 @@
 import { render, screen } from "../test";
 import { View } from "react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
-import { opacity } from "react-native-reanimated/lib/typescript/reanimated2/Colors";
 
 const testID = "test-id";
 
